@@ -12,6 +12,7 @@ ecoset_info_path = '/user_data/mmhender/stimuli/ecoset_info/'
 
 # this is THINGS images, in 64 categories like ecoset.
 # but this is the OLD version of the 64 categories (includes ukulele and mandolin).
+# this is for behav expt 3
 
 import synthesize_textures
 

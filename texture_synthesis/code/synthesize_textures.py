@@ -16,6 +16,8 @@ import optimize
 import model_spatial_combineimages
 import optimize_combineimages
 
+import model_fornoise
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
 
@@ -222,6 +224,114 @@ def make_textures_combineimages(target_image_filenames, \
 
         if save_loss:
             filename_save = os.path.join(out_dir, 'loss_scramble_upto_%s.csv'%(layers_match[ll]))
+            print('saving loss to %s'%filename_save)
+            loss_df = pd.DataFrame({'loss': optimizer.losses})
+            loss_df.to_csv(filename_save)
+
+
+
+def make_textures_noise(target_means, target_stds, 
+                        out_dir, \
+                        layers_do = ['pool1','pool2','pool3','pool4'], 
+                        n_steps = 100, \
+                        rndseed = None, 
+                        save_loss = False, \
+                        rgb_hist_vals = None):
+
+    """
+    Run texture synthesis algorithm to make a noise image with
+    specified gram matrix stats (mean/std)
+    Make textures for layers up to each of the specified layers
+    """
+    
+    model_path = os.path.join(texture_synth_root, 'models','VGG19_normalized_avg_pool_pytorch')
+
+    class a:
+        def __init__():
+            return a
+        
+    args = a
+    args.lr = 1.0
+    args.max_iter = 20
+    args.checkpoint_every = 1
+    args.n_steps = n_steps
+    args.do_sqrt = True
+
+    layers_all = ['relu1_1', 'pool1','pool2','pool3','pool4']
+    assert(len(target_means)==len(layers_all))
+    assert(len(target_stds)==len(layers_all))
+    
+    # loop over layers - making a different texture for each layer
+    # each will match the statistics of that layer and the ones before.
+
+    for ll in range(len(layers_do)):
+
+        curr_layer = layers_do[ll]
+
+        # current layer has to match one of the names in layers_all
+        index = np.where(curr_layer==np.array(layers_all))[0][0]
+        print(ll, index)
+        
+        # which layers to match now? grab all layers up to and including this one.
+        layers_match = layers_all[0:index+1]
+        
+        print('making texture for layers:')
+        print(layers_match)
+        sys.stdout.flush()
+
+        if rndseed is None:
+            args.rndseed = None
+        elif hasattr(rndseed, '__len__'):
+            args.rndseed = rndseed[ll]
+        else:
+            args.rndseed = rndseed + ll + 1
+
+        print(args.rndseed)
+
+        st = time.time()
+        net = model_fornoise.Model(model_path, device, \
+                                   target_means = target_means, \
+                                   target_stds = target_stds, \
+                                  important_layers = layers_match, \
+                                  spatial_weights_list = None, 
+                                  layer_weights = [1e09 for l in layers_match], \
+                                  do_sqrt = args.do_sqrt, \
+                                  rndseed = args.rndseed)
+
+        # synthesize    
+        optimizer = optimize.Optimizer(net, args)
+        result = optimizer.optimize()
+        elapsed = time.time() - st
+        print('took %.5f s to run synthesis'%elapsed)
+
+        img = result
+        # back from BGR to RGB, so it will look normal again
+        img_numpy = img.numpy().squeeze().transpose(1, 2, 0)[:, :, ::-1]
+
+        result = utilities.histogram_matching_from_saved(img_numpy, \
+                                  rgb_hist_vals['r_hist'], \
+                                  rgb_hist_vals['g_hist'], \
+                                  rgb_hist_vals['b_hist'], \
+                                  rgb_hist_vals['r_bin_edges'], \
+                                  rgb_hist_vals['g_bin_edges'], \
+                                  rgb_hist_vals['b_bin_edges'])
+        result_pil = PIL.Image.fromarray(result.astype(np.uint8))
+
+        final_image = result_pil
+        
+        # # save result
+        # # TODO: fix placeholder
+        # target_image_filename = '/user_data/mmhender/stimuli/featsynth/images_comb64_orig/beetle/beetle_01b.png'
+        # final_image = utilities.postprocess_image(
+        #     result, utilities.load_image(target_image_filename)
+        # )
+        filename_save = os.path.join(out_dir, 'noise_upto_%s.png'%(curr_layer))
+        print('saving image to %s'%filename_save)
+        final_image.save(filename_save)
+        sys.stdout.flush()
+
+        if save_loss:
+            filename_save = os.path.join(out_dir, 'loss_noise_upto_%s.csv'%(curr_layer))
             print('saving loss to %s'%filename_save)
             loss_df = pd.DataFrame({'loss': optimizer.losses})
             loss_df.to_csv(filename_save)

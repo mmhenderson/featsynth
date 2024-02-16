@@ -19,6 +19,8 @@ import time
 
 import things_utils
 
+# for behav expt 1 and 2
+
 def make_ims(args):
     
     st_overall = time.time()

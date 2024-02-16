@@ -16,9 +16,11 @@ expt_name = 'expt3'
 
 def make_trial_info(rndseed=986768):
 
-    # using here the same set of categories that we chose from ecoset.
-    # 64 basic categories in 8 superordinate groups.
-    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
+    # load list of 64 categories to use here.
+    # after running this expt, we changed some of the musical instrument categories.
+    # so this file has the "old version" of categories, used in this expt.
+    # fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
+    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset_OLDVERSION.npy')
     info = np.load(fn, allow_pickle=True).item()
     basic_names = list(info['binfo'].keys())
     super_names = list(info['sinfo'].keys())

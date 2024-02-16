@@ -16,19 +16,19 @@ import utilities, segmentation_utils
 
 def prep(image_set_name = 'images_ecoset64'):
     
-    if image_set_name == 'images_ecoset64':
-        # list of all files in each category
-        # in this list, images with person have been removed
-        fn = os.path.join(ecoset_info_path, 'ecoset_files_use.npy')
+    # if image_set_name == 'images_ecoset64':
+    # list of all files in each category
+    # in this list, images with person have been removed
+    fn = os.path.join(ecoset_info_path, 'ecoset_files_use.npy')
 
     # elif image_set_name == 'images_ecoset64_music2':
     #     # this is the one with different music categories included
     #     fn = os.path.join(ecoset_info_path, 'ecoset_files_use.npy')
         
-    elif image_set_name == 'images_ecoset64_includeperson':
-        # list of all files in each category
-        # version of the files list where person-having images have not been removed
-        fn = os.path.join(ecoset_info_path, 'ecoset_files_includeperson.npy')
+    # elif image_set_name == 'images_ecoset64_includeperson':
+    #     # list of all files in each category
+    #     # version of the files list where person-having images have not been removed
+    #     fn = os.path.join(ecoset_info_path, 'ecoset_files_includeperson.npy')
    
     print(fn)
     efiles = np.load(fn, allow_pickle=True).item()
@@ -45,14 +45,14 @@ def prep(image_set_name = 'images_ecoset64'):
 
     print(bnames)
 
-    if image_set_name == 'images_ecoset64_music2':
-        # adding some extra music categories here
-        new_instr = ['kazoo','cymbals','bugle']
-        bnames = new_instr
-        for b in new_instr:
-            info['binfo'][b] = dict()
-            info['binfo'][b]['super_name'] = 'musical instrument'
-            info['binfo'][b]['ecoset_folder'] = efolders[b]
+    # if image_set_name == 'images_ecoset64_music2':
+    #     # adding some extra music categories here
+    #     new_instr = ['kazoo','cymbals','bugle']
+    #     bnames = new_instr
+    #     for b in new_instr:
+    #         info['binfo'][b] = dict()
+    #         info['binfo'][b]['super_name'] = 'musical instrument'
+    #         info['binfo'][b]['ecoset_folder'] = efolders[b]
 
     print(bnames)
     sys.stdout.flush()

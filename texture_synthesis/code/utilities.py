@@ -432,6 +432,40 @@ def histogram_matching_multiple_targets(source_img, target_img_list, n_bins=100)
     return result
 
 
+def histogram_matching_from_saved(source_img, \
+                                  r_hist, g_hist, b_hist, \
+                                  r_bin_edges, g_bin_edges, b_bin_edges):
+    '''Taken from https://github.com/leongatys/DeepTextures'''
+    assert (
+        isinstance(source_img, np.ndarray)
+    )
+
+    result = np.zeros_like(source_img)
+    for i, [hist, bin_edges] in enumerate(zip([r_hist, g_hist, b_hist], \
+                                             [r_bin_edges, g_bin_edges, b_bin_edges])):
+        # # find the distribution of values in target image
+        # hist, bin_edges = np.histogram(
+        #     target_img[:, :, i].ravel(), bins=n_bins, density=True
+        # )
+        # convert the hist into a cumulative density function
+        cum_values = np.zeros(bin_edges.shape)
+        cum_values[1:] = np.cumsum(hist * np.diff(bin_edges))
+        # define function to interpolate in this distribution
+        inv_cdf = scipy.interpolate.interp1d(
+            cum_values, bin_edges, bounds_error=True
+        )
+        # modify the source image values to make them uniform.
+        # this is a non-linear transformation of the image that gives
+        # values between 0-1 (in "r")
+        r = np.asarray(uniform_hist(source_img[:, :, i].ravel()))
+        r[r > cum_values.max()] = cum_values.max()
+        
+        # use the "r" values as input into the cdf function
+        # (this is converting into target image distribution)
+        result[:, :, i] = inv_cdf(r).reshape(source_img[:, :, i].shape)
+
+    return result
+
 def uniform_hist(X):
     '''Taken from https://github.com/leongatys/DeepTextures'''
 

@@ -20,22 +20,27 @@ print(device)
     
 def get_person_labels(debug=False, batch_size=10, score_thresh=0.90):
     
-    # info about the ecoset categories of interest for our experiment
-    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
-    info = np.load(fn, allow_pickle=True).item()
-    basic_names = list(info['binfo'].keys())
+    # # info about the ecoset categories of interest for our experiment
+    # fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
+    # info = np.load(fn, allow_pickle=True).item()
+    # basic_names = list(info['binfo'].keys())
 
     
     fn = os.path.join(ecoset_info_path, 'ecoset_names.npy')
     efolders = np.load(fn, allow_pickle=True).item()
+    # basic_names = list(efolders.keys())
     
     # list of all files in each category
     fn = os.path.join(ecoset_info_path, 'ecoset_file_info.npy')
     efiles = np.load(fn, allow_pickle=True).item()
 
+    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
+    categ_use = np.load(fn, allow_pickle=True).item()
+    basic_names = categ_use['binfo'].keys()
     
     basic_names_test = basic_names
     
+    print(basic_names_test)
     
     if debug:
         fn2save = os.path.join(ecoset_info_path, 'ecoset_files_detect_person_DEBUG.npy')
