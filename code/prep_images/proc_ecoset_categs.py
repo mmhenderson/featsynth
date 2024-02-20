@@ -194,10 +194,6 @@ def get_ecoset_files_good():
     # where to save result 
     fn2save = os.path.join(ecoset_info_path, 'ecoset_files_use.npy')
 
-    import choose_extra_ecoset_ims
-    trumpet_fns = choose_extra_ecoset_ims.get_trumpet_filenames()
-    trumpet_fns = [t.split('bugle/')[1] for t in trumpet_fns]
-    
     efiles_adj = dict()
 
     for bi, bname in enumerate(bnames):
@@ -229,9 +225,14 @@ def get_ecoset_files_good():
         # else:
         #     ims_use_all = np.where(good)[0]
 
+        # hacky solutions to make sure the ones i hand-picked are here
         if bname=='trumpet':
-            # hacky solution to make sure the ones i hand-picked are here
            np.random.seed(234345+66) 
+        elif (info['binfo'][bname]['super_name']=='fruit') or \
+             (info['binfo'][bname]['super_name']=='vegetable'):
+            bi_use = bi-8
+            print([bname, bi, bi_use])
+            np.random.seed(234345+bi_use) 
         else:
            np.random.seed(234345+bi)
             
@@ -246,16 +247,7 @@ def get_ecoset_files_good():
         
             print('Sampling WITH replacement for %s'%bname)
             ims_use = np.random.choice(ims_use_all, n_ex_each, replace=True)
-            
-        # if bname=='trumpet':
-
-        #     imfiles = np.array(imfiles_all)[ims_use]
-        #     print(trumpet_fns[0])
-        #     print(imfiles[0])
-        #     print(len(trumpet_fns))
-        #     print(len(imfiles))
-        #     print(np.sum(np.isin(trumpet_fns, imfiles)))
-
+      
         efiles_adj[bname]['images'] = np.array(imfiles_all)[ims_use]
         efiles_adj[bname]['size'] = np.array(sizes)[ims_use]
         efiles_adj[bname]['mode'] = np.array(efiles[bname]['train']['mode'])[ims_use]

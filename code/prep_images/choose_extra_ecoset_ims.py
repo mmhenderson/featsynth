@@ -11,12 +11,94 @@ import scipy.spatial.distance
 project_root = '/user_data/mmhender/featsynth/'
 ecoset_info_path = '/user_data/mmhender/stimuli/ecoset_info/'
 
+def make_comb64_list():
+    
+    # choosing final set of 40 ims per category
+    # this is using the hand-selected good ecoset images to augment things images
+    
+    image_set_name1 = 'images_things64'
+    image_set_name2 = 'images_ecoset64'
+    
+    # load corresponding labels
+    image_list_filename1 = os.path.join(project_root, 'features','raw', '%s_list.csv'%(image_set_name1))
+    print(image_list_filename1)
+    labels_things = pd.read_csv(image_list_filename1, index_col=0)
+    labels_things['orig_set']='things'
+    
+    image_list_filename2 = os.path.join(project_root, 'features','raw', '%s_list.csv'%(image_set_name2))
+    print(image_list_filename2)
+    labels_ecoset = pd.read_csv(image_list_filename2, index_col=0)
+    labels_ecoset['orig_set']='ecoset'
+    
+    # info about ecoset categories
+    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
+    info = np.load(fn, allow_pickle=True).item()
+    bnames = list(info['binfo'].keys())
+    
+    labels_all = pd.DataFrame()
+    
+    # how many total ims do we want per categ?
+    # n_total = 61
+    n_total = 40
+    n_things = 12
+    n_add_ecoset = n_total - n_things
+
+    for bi, bname in enumerate(bnames):
+    
+        # loading hand-selected good ecoset images
+        bname = bnames[bi]
+        fn = os.path.join(ecoset_info_path, 'good_ecoset_ims','%s.csv'%bname)
+        print(fn)
+        good_ecoset_fns = np.array(pd.read_csv(fn, index_col=0)[bname])
+    
+        # find where in original array these come from
+        good_inds_orig = [np.where(np.array(labels_ecoset['image_filename'])==fn)[0][0] for fn in good_ecoset_fns]
+        
+       
+        # putting these all into a new dataframe
+        labels_new = pd.DataFrame()
+    
+        # first the things images 
+        inds_things = np.where(labels_things['basic_name']==bname)[0]
+        labels_new = pd.concat([labels_new, labels_things.iloc[inds_things]])
+    
+        # then the selected ecoset images
+        labels_new = pd.concat([labels_new, labels_ecoset.iloc[good_inds_orig]])
+    
+        labels_new['exemplar_number_orig']=labels_new['exemplar_number']
+        labels_new['exemplar_number'] = np.arange(n_total)
+        
+        all_filenames = list(labels_new['image_filename'])
+        
+        # trying to screen for any duplicate files here
+        simple_filenames = [f.split('/')[-1] for f in all_filenames]
+        assert len(simple_filenames)==len(np.unique(simple_filenames))
+       
+        labels_all = pd.concat([labels_all, labels_new])
+    
+    
+    # save all the labels to a new big list
+    labels_all = labels_all.set_index(np.arange(labels_all.shape[0]))
+    
+    image_set_name_save = 'images_comb64'
+        
+    image_list_name_save = os.path.join(project_root, 'features','raw', '%s_list.csv'%(image_set_name_save))
+    print('writing to %s'%image_list_name_save)
+    
+    labels_all.to_csv(image_list_name_save)
+
+
 def choose_best_ecoset_ims():
 
+    # this is an old version of code used as a starting point. 
+    # the final list of images were chosen partly by hand, saved as 
+    # csv files in "good_ecoset_ims" folder
+    # see "choose_comb64.ipynb"
+    
     # choosing a set of ecoset images to augment the "things" images
     # based on which ecoset images have most similar clip embeddings to 
     # the original things images. 
-    
+       
     feat_path = os.path.join(project_root, 'features', 'clip')
 
     
