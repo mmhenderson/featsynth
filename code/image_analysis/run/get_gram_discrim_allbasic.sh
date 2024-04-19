@@ -21,14 +21,14 @@ PYTHONPATH=:${ROOT}featsynth/code/
 # go to folder where script is located
 cd ${ROOT}featsynth/code/image_analysis/run/
 
-image_set_name=images_ecoset
+image_set_name=images_ecoset64
 layers_process=(pool1 pool2 pool3 pool4)
 # layers_process=(pool1 pool2 pool3)
 
 debug=0
 # n_per_categ=256
-# n_per_categ_vals=(128 256 496)
-n_per_categ_vals=(128)
+n_per_categ_vals=(128 256 496)
+# n_per_categ_vals=(128)
 n_cv=10
 
 for n_per_categ in ${n_per_categ_vals[@]}

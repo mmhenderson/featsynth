@@ -22,12 +22,21 @@ PYTHONPATH=:${ROOT}featsynth/code/
 cd ${ROOT}featsynth/code/image_analysis/run/
 
 debug=0
-image_set_name=images_ecoset64
-layer_do=all
-# layer_do=pool1
-grayscale=1
 
-# python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.get_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'",'${grayscale}')'
+layer_do=all
+
+image_set_name=images_ecoset64
+
+grayscale=0
+python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.get_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'",'${grayscale}')'
+
+python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.pca_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'")'
+
+
+image_set_name=images_ecoset64
+
+grayscale=1
+python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.get_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'",'${grayscale}')'
 
 image_set_name=images_ecoset64_grayscale
 

@@ -21,9 +21,13 @@ PYTHONPATH=:${ROOT}featsynth/code/
 # go to folder where script is located
 cd ${ROOT}featsynth/code/image_analysis/run/
 
-# image_set_name=images_ecoset
-image_set_name=images_ecoset64_grayscale
 debug=0
+
+image_set_name=images_ecoset64
+
+python3 -c 'from image_analysis import get_gram_matrix_distances; get_gram_matrix_distances.get_ecoset_dist_vary_nums("'${image_set_name}'",'${debug}')'
+
+image_set_name=images_ecoset64_grayscale
 
 python3 -c 'from image_analysis import get_gram_matrix_distances; get_gram_matrix_distances.get_ecoset_dist_vary_nums("'${image_set_name}'",'${debug}')'
 

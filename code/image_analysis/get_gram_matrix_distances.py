@@ -74,9 +74,14 @@ def compute_distances_allims(image_set_name = 'images_things200',
     # within/across superordinate
     within_s, across_s = get_within_across_distances(feat, super_labels, \
                                                     distance_metric=distance_metric)
-      
+
+    # pairwise distances 
+    basic_pair = get_pairwise_distances(feat, basic_labels, distance_metric=distance_metric)
+    super_pair = get_pairwise_distances(feat, super_labels, distance_metric=distance_metric)
+    
     return within_b, across_b_within_s, across_b_all, \
-            within_s, across_s
+            within_s, across_s, \
+            basic_pair, super_pair
 
 
 
@@ -193,6 +198,105 @@ def compute_distances_ecoset(image_set_name = 'images_ecoset64',
     return within_b, across_b_within_s, across_b_all, \
             within_s, across_s
 
+
+def compute_pairwise_distances_ecoset(image_set_name = 'images_ecoset64', 
+                      layers_process = ['pool1','pool2','pool3','pool4'], 
+                      distance_metric='cosine', \
+                      n_per_categ = 100, \
+                      n_comp_keep = 100):
+    
+    # load image features
+    feat_path = os.path.join(project_root, 'features', 'gram_matrices')
+
+    feat_all = []
+
+    for li in range(len(layers_process)):
+
+        feat_file_name = os.path.join(feat_path, \
+                                      '%s_gram_matrices_%s_pca.npy'%(image_set_name,\
+                                                               layers_process[li]))
+        print(feat_file_name)
+        feat = np.load(feat_file_name)
+
+        feat = feat[:,0:n_comp_keep]
+
+        feat_all += [feat]
+
+    feat_all = np.concatenate(feat_all, axis=1)
+    feat = feat_all
+    feat = scipy.stats.zscore(feat, axis=0)
+    print(feat.shape)
+      
+    # load corresponding labels
+    image_list_filename = os.path.join(project_root, 'features','raw', '%s_list.csv'%(image_set_name))
+    labels = pd.read_csv(image_list_filename)
+    
+    basic_labels = np.array(labels['basic_index'])
+    super_labels = np.array(labels['super_index'])
+    n_super = len(np.unique(super_labels))
+    n_basic = len(np.unique(basic_labels))
+    n_basic_each_super = int(n_basic/n_super)
+   
+    n_images = labels.shape[0]
+    
+    # info about ecoset categories
+    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
+    info = np.load(fn, allow_pickle=True).item()
+    basic_names = np.array(list(info['binfo'].keys()))
+    super_names = np.array(list(info['sinfo'].keys()))
+    
+    # get basic-level separability:
+    # first create a set of images that have the desired number per categ
+    ims_use_subsample = np.zeros((n_images,),dtype=bool)
+    
+    for bi, bname in enumerate(basic_names):
+        inds = np.where(np.array(labels['basic_name'])==bname)[0]
+        if len(inds)>=n_per_categ:
+            inds_use = np.random.choice(inds, n_per_categ, replace=False)
+        else:
+            if bi==0:
+                # usually this shouldn't happen
+                print('warning: there are only %d trials to sample %d from'%(len(inds), n_per_categ))
+            inds_use = inds
+            
+        ims_use_subsample[inds_use] = True     
+            
+    print('total ims subsampled for basic: %d'%(np.sum(ims_use_subsample)))
+
+    # pairwise distances 
+    basic_pair = get_pairwise_distances(feat[ims_use_subsample,:], \
+                                        basic_labels[ims_use_subsample], \
+                                        distance_metric=distance_metric)
+    
+    # get super-level separability:
+    # first create a set of images that have the desired number per categ
+    ims_use_subsample = np.zeros((n_images,),dtype=bool)
+    
+    # n_per_categ is how many we want total per superordinate categ.
+    # want to divide these evenly across the basics
+    n_per_basic = int(np.ceil(n_per_categ/n_basic_each_super))
+   
+    for sname in super_names:
+        for bname in info['sinfo'][sname]['basic_names']:
+
+            inds = np.where((np.array(labels['super_name'])==sname) & \
+                            (np.array(labels['basic_name'])==bname))[0]
+            
+            if len(inds)>=n_per_basic:
+                inds_use = np.random.choice(inds, n_per_basic, replace=False)
+            else:
+                inds_use = inds
+            ims_use_subsample[inds_use] = True  
+        
+    print('total ims subsampled for super: %d'%(np.sum(ims_use_subsample)))
+    
+    super_pair = get_pairwise_distances(feat[ims_use_subsample,:], \
+                                        super_labels[ims_use_subsample], \
+                                        distance_metric=distance_metric)
+    
+    return basic_pair, super_pair
+
+
 def get_ecoset_dist_vary_nums(image_set_name = 'images_ecoset64', \
                               debug=0):
     
@@ -281,5 +385,46 @@ def get_within_across_distances(feat, labels, distance_metric='cosine'):
         
     return within_dist, across_dist
 
+
+def get_pairwise_distances(feat, labels, distance_metric='cosine'):
+        
+    assert(feat.shape[0]==len(labels))
+    
+    un, counts = np.unique(labels, return_counts=True)
+    assert(np.all(counts==counts[0])) # checking the groups are even
+    
+    n_labels = len(un)
+    pair_dist = np.zeros((n_labels, n_labels))
+    
+    for li1 in np.arange(n_labels):
+        
+        lab1 = un[li1]
+    
+        f1 = feat[labels==lab1]
+    
+        # within-group distances
+        # note this is different than cdist because it ignores identical ims
+        # (which would have distance 0)
+        d = scipy.spatial.distance.pdist(f1, metric=distance_metric)
+        
+        pair_dist[li1, li1] = np.mean(d.ravel())
+        
+        for li2 in np.arange(li1+1, n_labels):
+    
+            # print([li1, li2])
+            lab2 = un[li2]
+            
+            f2 = feat[labels==lab2]
+            
+            # across-group distances
+            d = scipy.spatial.distance.cdist(f1, f2, metric=distance_metric)
+        
+            pair_dist[li1, li2] = np.mean(d.ravel())
+    
+            # this is diagonally symmetric
+            assert(pair_dist[li2, li1]==0)
+            pair_dist[li2, li1] = np.mean(d.ravel())
+            
+    return pair_dist
 
 

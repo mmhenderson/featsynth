@@ -24,11 +24,17 @@ cd ${ROOT}featsynth/code/image_analysis/run/
 debug=0
 image_set_name=images_things64
 layer_do=all
-# grayscale=1
-grayscale=0
+
+# grayscale=0
+
+# python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.get_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'",'${grayscale}')'
+
+# python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.pca_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'")'
+
+grayscale=1
 
 python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.get_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'",'${grayscale}')'
 
-# image_set_name=${image_set_name}_grayscale
+image_set_name=${image_set_name}_grayscale
 
 python3 -c 'from image_analysis import get_gram_matrices; get_gram_matrices.pca_gram_matrices('${debug}', "'${image_set_name}'", "'${layer_do}'")'
