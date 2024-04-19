@@ -4,7 +4,7 @@ import pandas as pd
 import copy
 
 project_root = '/user_data/mmhender/featsynth/'
-stimuli_folder = 'images_comb64/'
+stimuli_folder = 'images_comb64_grayscale/'
 stimuli_folder_full = '/user_data/mmhender/stimuli/featsynth/images_comb64/'
 ecoset_info_path = '/user_data/mmhender/stimuli/ecoset_info/'
 
@@ -13,9 +13,9 @@ from utils import dropbox_utils, expt_utils
 token_path = os.path.join(project_root, 'tokens/dbx_token.txt')
 dbx = dropbox_utils.init_dropbox(token_path)
 
-expt_name = 'expt4'
+expt_name = 'expt5'
 
-def make_trial_info(rndseed=935745):
+def make_trial_info(rndseed=234453):
 
     # using here the same set of categories that we chose from ecoset.
     # 64 basic categories in 8 superordinate groups.
