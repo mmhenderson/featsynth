@@ -11,10 +11,7 @@ from utils import stats_utils
 def get_categ_info():
    
     # load list of 64 categories to use here.
-    # after running this expt, we changed some of the musical instrument categories.
-    # so this file has the "old version" of categories, used in this expt.
-    # fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
-    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset_OLDVERSION.npy')
+    fn = os.path.join(ecoset_info_path, 'categ_use_ecoset.npy')
     info = np.load(fn, allow_pickle=True).item()
     
     bnames = np.array(list(info['binfo'].keys()))
@@ -49,7 +46,7 @@ def save_categ_info():
         super_names_long, super_inds_long, n_basic, n_super, n_basic_each_super = \
             get_categ_info()
 
-    save_filename = os.path.join(project_root, 'code', 'make_expt_designs', 'expt3_categ_info.npy')
+    save_filename = os.path.join(project_root, 'code', 'make_expt_designs', 'expt4_categ_info.npy')
     np.save(save_filename, {'super_names': super_names, \
                            'super_cbinds': super_cbinds, \
                            'basic_names': basic_names, \
@@ -57,7 +54,7 @@ def save_categ_info():
                            'super_names_long': super_names_long, \
                            'super_inds_long': super_inds_long})
     
-def load_data(expt_name = 'expt3'):
+def load_data(expt_name = 'expt4'):
 
     preproc_folder = os.path.join(project_root, 'online_data', expt_name, 'preproc')
     data_filename = os.path.join(preproc_folder, 'preproc_data_all.csv')
@@ -139,7 +136,7 @@ def get_perf_by_nat():
     # natural or artificial categories?
     # ['insect', 'vegetable', 'fruit', 'dessert', 'tool',
     #    'musical_instrument', 'furniture', 'vehicle']
-    is_natural = np.array([1,1,1,np.nan,0,0,0,0]).astype(bool)
+    is_natural = np.array([1,1,1,1,0,0,0,0]).astype(bool)
     kind_names = ['Artificial','Natural']
     n_kinds = len(kind_names)
     
@@ -234,12 +231,50 @@ def get_perf_by_run():
     run_nums = np.unique(trial_data_all['run_number'])
     n_runs = len(run_nums)
     
-    # going to sort the runs by number within each task
-    # the tasks alternate even/odd runs
+    acc_by_run = np.zeros((n_subjects, n_runs))
+    dprime_by_run = np.zeros((n_subjects, n_runs))
+    rt_by_run = np.zeros((n_subjects, n_runs))
     
-    acc_by_run = np.zeros((n_subjects, n_cue_levels, int(n_runs/2)))
-    dprime_by_run = np.zeros((n_subjects, n_cue_levels, int(n_runs/2)))
-    rt_by_run = np.zeros((n_subjects, n_cue_levels, int(n_runs/2)))
+    for si, ss in enumerate(subjects):
+    
+        trial_data = trial_data_all[(trial_data_all['subject']==ss)]
+        # this is either just even runs or just odd runs, 
+        # since the cue levels alternate
+        run_nums_here = np.unique(trial_data['run_number'])
+
+        # print(ss, cue, run_nums_here)
+        for ri, rr in enumerate(run_nums_here):
+            
+            inds = trial_data['run_number']==rr
+            
+            predlabs = np.array(trial_data['resp'])[inds]
+            reallabs = np.array(trial_data['correct_resp'])[inds]
+            rts = np.array(trial_data['rt'])[inds]
+            
+            acc_by_run[si, ri] = np.mean(predlabs==reallabs)
+            
+            did_respond = predlabs>-1
+            
+            rt_by_run[si, ri] = np.mean(rts[did_respond])
+            
+            predlabs = predlabs[did_respond]
+            reallabs = reallabs[did_respond]
+            
+            dprime_by_run[si, ri] = stats_utils.get_dprime(predlabs, reallabs)
+        
+    return acc_by_run, dprime_by_run, rt_by_run
+
+
+
+def get_perf_by_miniblock():
+    
+    mb_nums = np.unique(trial_data_all['miniblock_number_overall'])
+    n_mbs = len(mb_nums)
+    
+    # going to sort the mbs by number within each task
+    acc_by_mb = np.zeros((n_subjects, n_cue_levels, int(n_mbs/2)))
+    dprime_by_mb = np.zeros((n_subjects, n_cue_levels, int(n_mbs/2)))
+    rt_by_mb = np.zeros((n_subjects, n_cue_levels, int(n_mbs/2)))
     
     for si, ss in enumerate(subjects):
         
@@ -247,28 +282,38 @@ def get_perf_by_run():
 
             trial_data = trial_data_all[(trial_data_all['subject']==ss) & \
                                         (trial_data_all['cue_level']==cue)]
-            # this is either just even runs or just odd runs, 
-            # since the cue levels alternate
-            run_nums_here = np.unique(trial_data['run_number'])
+            
+            mb_nums_here = np.unique(trial_data['miniblock_number_overall'])
 
-            # print(ss, cue, run_nums_here)
-            for ri, rr in enumerate(run_nums_here):
+            # print(ss, cue, mb_nums_here)
+            for ri, rr in enumerate(mb_nums_here):
                 
-                inds = trial_data['run_number']==rr
+                inds = trial_data['miniblock_number_overall']==rr
                 
                 predlabs = np.array(trial_data['resp'])[inds]
                 reallabs = np.array(trial_data['correct_resp'])[inds]
                 rts = np.array(trial_data['rt'])[inds]
                 
-                acc_by_run[si, cc, ri] = np.mean(predlabs==reallabs)
+                acc_by_mb[si, cc, ri] = np.mean(predlabs==reallabs)
                 
                 did_respond = predlabs>-1
+                if not np.any(did_respond):
+                    
+                    rt_by_mb[si, cc, ri] = np.nan
+                    dprime_by_mb[si, cc, ri] = np.nan
+                    
+                else:
+                    rt_by_mb[si, cc, ri] = np.mean(rts[did_respond])
                 
-                rt_by_run[si, cc, ri] = np.mean(rts[did_respond])
+                    predlabs = predlabs[did_respond]
+                    reallabs = reallabs[did_respond]
+    
+                    if len(np.unique(reallabs))<2:
+                        # since the mini-blocks are small, sometimes all the trials have 
+                        # same "real label" by chance. so dprime would not be defined
+                        dprime_by_mb[si, cc, ri] = np.nan
+                    else:
+                        dprime_by_mb[si, cc, ri] = stats_utils.get_dprime(predlabs, reallabs)
+    
                 
-                predlabs = predlabs[did_respond]
-                reallabs = reallabs[did_respond]
-                
-                dprime_by_run[si, cc, ri] = stats_utils.get_dprime(predlabs, reallabs)
-        
-    return acc_by_run, dprime_by_run, rt_by_run
+    return acc_by_mb, dprime_by_mb, rt_by_mb
