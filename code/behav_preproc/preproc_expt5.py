@@ -4,12 +4,12 @@ import os, sys
 from utils import date_utils
 
 project_root = '/user_data/mmhender/featsynth/'
-expt_name = 'expt1'
+expt_name = 'expt5'
 
-stimulus_dur_ms = 500 # need this to get accurate RTs
+cue_text_dur_ms = 1200 # need this to get accurate RTs
 intact_acc_threshold = 0.75 # use to filter out very bad subjects
-n_runs_expected = 10;
-n_trials_run_expected = 100
+n_runs_expected = 16;
+n_trials_run_expected = 40
 
 def preproc_all():
 
@@ -32,8 +32,7 @@ def preproc_all():
 
     # load all raw data files
     raw_data = pd.DataFrame()
-    raw_worker_ids = pd.DataFrame()
-
+   
     for ff, folder in enumerate(folders):
 
         # this is the main task data
@@ -45,37 +44,48 @@ def preproc_all():
         print(task_filename)
 
         r = pd.read_csv(task_filename)
+        
+        if 'UTC Date' not in r.keys():
+            print('fixing column name for date')
+            r['UTC Date'] = r['UTC Date and Time']
+
         raw_data = pd.concat([raw_data, r])
 
-        # this is the worker-id collection task
-        string2 = '89gk'
-        subfolder = os.path.join(data_folder, folders[ff])
-        files = os.listdir(subfolder)
-        files = [f for f in files if string2 in f and '.csv' in f]
-        if len(files)>0:
-            worker_id_filename = os.path.join(subfolder,files[0])
-            r = pd.read_csv(worker_id_filename)
-            raw_worker_ids = pd.concat([raw_worker_ids, r])
-
     raw_data.set_index(np.arange(raw_data.shape[0]));
-    raw_worker_ids.set_index(np.arange(raw_worker_ids.shape[0]));
-
-    # define "good subjects" (those that finished whole experiment and got completion codes)
+  
+    # define "complete subjects" (those that finished whole experiment)
     public_ids = np.array(raw_data['Participant Public ID'])
     public_ids = [p if isinstance(p,str) else '' for p in public_ids]
     public_ids = np.unique(public_ids)
     public_ids = np.array([p for p in public_ids if len(p)>1])
 
     is_good = []
+    start_times = []
+    
     for pub_id in public_ids:
         inds = np.where(raw_data['Participant Public ID']==pub_id)[0]
         d = raw_data.iloc[inds]
-
-        code = np.array(d['Participant Completion Code'])
-        has_code = np.any([isinstance(c,str) for c in code])
-
-        is_good += [has_code]
         
+        n_trials_done = np.array([np.sum((d['run_number']==rr) & (d['is_stim'])) \
+                              for rr in np.arange(1,n_runs_expected+1)])
+        if np.all(n_trials_done>=n_trials_run_expected):
+            done=True
+        else:
+            done=False
+            print(pub_id)
+            print(n_trials_done)
+            
+        st = date_utils.adjust_datetime_str(np.min(d['UTC Date']), -8)
+            
+        is_good += [done]
+        start_times += [st]
+    
+    # sort ids based on who did experiment first
+    subject_order = date_utils.argsort_dates(start_times)
+    public_ids = public_ids[subject_order]
+    is_good = np.array(is_good)[subject_order]
+    start_times = np.array(start_times)[subject_order]
+
     # get ids of all subjects that finished
     complete_ids = public_ids[np.array(is_good)]
     print(complete_ids)
@@ -86,29 +96,32 @@ def preproc_all():
     pubids_check = p['PublicID'][p['Status']=='Complete']
     pubids_check = np.sort(list(pubids_check))
 
-    # make sure all ids from 'participants_all.csv' are in the actual data
+    # make sure all complete ids from 'participants_all.csv' are in the actual data
+    # this is just sanity check that data is up-to-date
+    # but note that some good subject might not have the "complete" flag in .csv file
+    # if something weird happened on exit, etc
     assert(np.all([p in complete_ids for p in pubids_check]))
     
-    
     # make .csv for all subjects (including incomplete)
-    all_df = make_subject_df(raw_data, raw_worker_ids, public_ids)
+    all_df = make_subject_df(raw_data, public_ids)
     fn2save = os.path.join(preproc_folder,'all_sub_list.csv')
     print('saving to %s'%fn2save)
     all_df.to_csv(fn2save)
 
     # make .csv files listing the complete subjects only (finished all trials)
-    complete_df = make_subject_df(raw_data, raw_worker_ids, complete_ids)
+    complete_df = make_subject_df(raw_data, complete_ids)
     fn2save = os.path.join(preproc_folder,'complete_subs_only.csv')
     print('saving to %s'%fn2save)
     complete_df.to_csv(fn2save)
-    complete_worker_ids = np.array(complete_df['Worker ID mTurk'])
     
+    complete_prolific_ids = np.array(complete_df['Worker ID Prolific'])
     
     # now gathering the actual trial-by-trial info for each subject, 
     # which will be saved to disk for the good subjects.
     trial_data_all = pd.DataFrame()
     good_subject_count = 0 # keep track of how many have > threshold accuracy
-    good_ids = []
+    good_prolific_ids = []
+    
     
     for si, ss in enumerate(complete_ids):
         
@@ -155,22 +168,22 @@ def preproc_all():
             # this subject is missing a run, need to skip it here
             print('missing some data, skipping subject')
             continue
-
+            
         if intact_acc<intact_acc_threshold:
 
             # don't save the low-performing subjects
             print('intact accuracy too low, skipping subject')
             continue
-         
+       
         good_subject_count += 1
         print('final number of this subject: %d'%good_subject_count)
         trial_data['subject']=np.full(fill_value=good_subject_count, shape=[trial_data.shape[0],])
         trial_data['gorilla_pub_id']=np.full(fill_value=ss, shape=[trial_data.shape[0],])
-        trial_data['worker_id']=np.full(fill_value=complete_worker_ids[si], shape=[trial_data.shape[0],])
+        trial_data['worker_id']=np.full(fill_value=complete_prolific_ids[si], shape=[trial_data.shape[0],])
         
         trial_data_all = pd.concat([trial_data_all, trial_data])
 
-        good_ids += [ss]
+        good_prolific_ids += [complete_prolific_ids[si]]
 
     trial_data_all.set_index(np.arange(trial_data_all.shape[0]));
     
@@ -178,32 +191,34 @@ def preproc_all():
     d = trial_data_all
     subinds = np.unique(d['subject'])
     sinds = [np.where(np.array(d['subject'])==ss)[0][0] for ss in subinds]
-    cbinds = [np.array(d['which_cb'])[ii] for ii in sinds]
-    u, counts = np.unique(cbinds, return_counts=True)
+    # cbinds = [np.array(d['which_cb'])[ii] for ii in sinds]
+    # u, counts = np.unique(cbinds, return_counts=True)
     print('\nnumber of good subjects (above acc %.2f): %d'%(intact_acc_threshold, len(subinds)))
-    print('set 1, set 2: [%d, %d]'%(counts[0],counts[1]))
+    # print(u, counts)
 
     # make .csv files listing the good subjects only (passing all criteria)
-    good_df = make_subject_df(raw_data, raw_worker_ids, good_ids)
+    # this is converting from prolific ids to gorilla ids (actually they are the same)
+    good_ids = [complete_ids[np.where(complete_prolific_ids==id)[0][0]] for id in good_prolific_ids]
+    good_df = make_subject_df(raw_data, good_ids)
     fn2save = os.path.join(preproc_folder,'good_subs_only.csv')
     print('saving to %s'%fn2save)
     good_df.to_csv(fn2save)
 
-    
+    # save all data (trial-by-trial)
     fn2save = os.path.join(preproc_folder, 'preproc_data_all.csv')
     print('saving to %s'%fn2save)
     trial_data_all.to_csv(fn2save)
     
     
 
-def make_subject_df(raw_data, raw_worker_ids, public_ids):
+def make_subject_df(raw_data, public_ids):
 
     """ 
     Making list of all the subjects who participated, and some basic stats for each.
     """
     
-    colnames = ['Gorilla public ID', 'Survey Completion Code', \
-                'Worker ID mTurk',\
+    colnames = ['Gorilla public ID',\
+                'Worker ID Prolific',\
                 'Expt Start Time (PST)', 'Expt End Time (PST)', 'Total number of trials', \
                 'Avg Acc', 'Avg RT (ms)',\
                'Experiment version num', 'Task version num', \
@@ -216,42 +231,30 @@ def make_subject_df(raw_data, raw_worker_ids, public_ids):
         inds = np.where(raw_data['Participant Public ID']==pub_id)[0]
 
         d = raw_data.iloc[inds]
-
-        start_run_inds = np.where(~np.isnan(d['subject_id_rnd']))[0][0::2]
-        if len(start_run_inds)==0:
-            print(pub_id)
-            continue
-        stop_run_inds = np.where(~np.isnan(d['subject_id_rnd']))[0][1::2]
-        finish_inds = stop_run_inds+1
+        
+        finish_inds = np.where(~np.isnan(d['average_rt']))
         run_acc = np.array(d['total_acc'])[finish_inds]
         run_avg_rts = np.array(d['average_rt'])[finish_inds]
         acc = np.nanmean(run_acc).round(2)
         rt = np.nanmean(run_avg_rts).round(2)
-        
-        stim_height_pix = d['stim_height_pix'].iloc[start_run_inds[0]]
-        
+
+        sh = np.array(d['stim_height_pix'])
+        stim_height_pix = sh[~np.isnan(sh)][0]
         
         trial_nums = np.array(d['trial_in_run'])
         trial_nums = trial_nums[~np.isnan(trial_nums)]
         n_trials = int(len(trial_nums)/3)
 
-        code = np.array(d['Participant Completion Code'])[0]
-
         # converting to PST here
         start = date_utils.adjust_datetime_str(np.min(d['UTC Date']), -8)
         end = date_utils.adjust_datetime_str(np.max(d['UTC Date']), -8)
 
-        subject_inds = [pub_id==pid for pid in raw_worker_ids['Participant Public ID']]
-        if sum(subject_inds)>0:
-            inds = np.where(subject_inds & (raw_worker_ids['Question Key']=='worker-id'))[0][0]
-            wid = raw_worker_ids['Response'].iloc[inds]
-        else:
-            wid = 'nan'
+        wid = pub_id
 
         task_version = np.array(d['Task Version'])[0]
         expt_version = np.array(d['Experiment Version'])[0]
 
-        vals = np.array([[pub_id, code, wid, start, end, n_trials, \
+        vals = np.array([[pub_id, wid, start, end, n_trials, \
                           acc, rt, \
                           expt_version, task_version, stim_height_pix]])
         df = pd.concat([df, pd.DataFrame(vals, columns=colnames, index=[ii])],\
@@ -271,32 +274,47 @@ def preproc_data(data):
 
     for rr in np.arange(1,n_runs_expected+1):
 
+        # all the inds that are tagged with this run number
         runinds = np.where(data['run_number']==rr)[0]
         rundat = data.iloc[runinds]
         n_trials_run = np.sum(rundat['is_stim'])
         # for a normal length run, there should be this many events...
-        n_evts_expected = 302
+        # the events are start fixation, then n trials each with 3 events
+        # the end fixation and feedback screen aren't tagged with run number
+        n_evts_expected = n_trials_run_expected*3 + 1
+        # n_evts_expected = 121
 
         if (n_trials_run!=n_trials_run_expected) or (rundat.shape[0]!=n_evts_expected):
 
             print('run %d: there are %d trials saved, fixing this'%(rr, n_trials_run))
+
             # this means some kind of extra data was inserted in here
-            # can be if page was refreshed. fix it here
-            inds_use = np.where(~np.isnan(rundat['subject_id_rnd']))[0]
-            d = np.diff(inds_use)
-            interval_use = np.argmax(d)
-            inds_use = [inds_use[interval_use], inds_use[interval_use+1]]
+            # can be if page was refreshed while they were doing the run.
+            # important thing is to find a group of contiguous trials by trial index
+            ti = np.array(rundat['Trial Index'])
+            tid = np.diff(ti)
+            ctid = np.cumsum(tid)
+            run_end = np.where(ctid==(n_evts_expected-1))[0][0] + 1
+            run_start = run_end - n_evts_expected + 1
+
+            # start and end of the run, within runinds
+            inds_use = [run_start, run_end]
 
             # skip any weird fragments
-            evt_inds_exclude += [runinds[0:inds_use[0]]]
-            evt_inds_exclude += [runinds[inds_use[1]+1:]]
+            evt_inds_exclude += [runinds[0:run_start]]
+            evt_inds_exclude += [runinds[run_end+1:]]
 
         else:
 
+            # start and end of the run, within runinds
             inds_use = [0, n_evts_expected-1]
+
+        # print(inds_use)
 
         start_run_inds += [runinds[inds_use[0]]]
         stop_run_inds += [runinds[inds_use[1]]]
+
+        # print(data['Trial Index'].iloc[runinds[np.array(inds_use)]])
 
     if len(evt_inds_exclude)>0:    
         evt_inds_exclude = np.concatenate(evt_inds_exclude, axis=0)
@@ -305,7 +323,7 @@ def preproc_data(data):
     start_run_inds = np.array(start_run_inds)
     stop_run_inds = np.array(stop_run_inds)
 
-    finish_inds = stop_run_inds+1
+    finish_inds = stop_run_inds+2
 
 
     # get some basic stats here
@@ -313,19 +331,22 @@ def preproc_data(data):
     run_numbers = np.array(data['run_number'])[start_run_inds].astype(int)
 
     # more info about what sequence this subject did
-    which_cb = int(np.array(data['which_counterbal'])[start_run_inds[0]])
+    # which_cb = int(np.array(data['which_counterbal'])[start_run_inds[0]])
     random_order_number = int(np.array(data['random_order_number'])[start_run_inds[0]])
 
-    print('counterbalance cond: %d'%which_cb)
+    # print('counterbalance cond: %d'%which_cb)
     print('random order number: %d'%random_order_number)
     # from disk, load the sequence for the trials that were shown to this participant.
     # this was pre-made before experiment was run.
     # can double check that everything saved from gorilla matches what was in here.
     expt_design_folder = os.path.join(project_root, 'expt_design', expt_name)
-    info_filename = os.path.join(expt_design_folder, 'trial_info_counterbal%d_randorder%d.csv'%(which_cb, random_order_number))
+    info_filename = os.path.join(expt_design_folder, \
+                                 'trial_info_randorder%d.csv'%(random_order_number))
     info = pd.read_csv(info_filename)
 
-    good_stim_inds = (data['is_stim']==True) & ~evt_inds_exclude
+    # they can respond either during "cue" (text labels are onscreen)
+    # or during ITI (just fix pt)
+    good_stim_inds = (data['is_cue']==True) & ~evt_inds_exclude
     good_iti_inds = (data['is_iti']==True) & ~evt_inds_exclude
 
     n_trials = np.sum(good_stim_inds)
@@ -341,8 +362,8 @@ def preproc_data(data):
     trial_data['run_number'] = np.repeat(run_numbers, int(n_trials/len(run_numbers)))
     
     rts = stim_rts
-    # if they responded during ITI, we adjust their RT based on stimulus duration.
-    rts[np.isnan(stim_rts)] = iti_rts[np.isnan(stim_rts)] + stimulus_dur_ms
+    # if they responded during ITI, we adjust their RT based on cue duration.
+    rts[np.isnan(stim_rts)] = iti_rts[np.isnan(stim_rts)] + cue_text_dur_ms
 
     trial_data['rt'] = rts
 
@@ -360,7 +381,7 @@ def preproc_data(data):
     correct_resp = correct_resp[good_stim_inds].astype(int)
 
     # double check that trial sequence is correct between data and trial info csv
-    correct_resp_check = 2-info['target_present'].astype(int)
+    correct_resp_check = info['correct_resp'].astype(int)
     if not np.all(correct_resp_check==correct_resp):
         print(info_filename)
         print(correct_resp, correct_resp_check)
@@ -398,10 +419,8 @@ def preproc_data(data):
     
     print('run accuracies:')
     print(run_acc)
-    # print(run_acc_check)
     print('run avg RTs:')
     print(run_avg_rts)
-    # print(run_avg_rts_check)
     
     # how many no-response trials per run?
     n_no_resp = np.array([np.sum(~did_resp[(r==rr)]) \
@@ -426,7 +445,7 @@ def preproc_data(data):
 
 
     # add some more info for this subject, same values for all trials
-    trial_data['which_cb'] = np.full(fill_value=which_cb, shape=[trial_data.shape[0],])
+    # trial_data['which_cb'] = np.full(fill_value=which_cb, shape=[trial_data.shape[0],])
     trial_data['random_order_number'] = np.full(fill_value=random_order_number, \
                                                 shape=[trial_data.shape[0],])
     ppd = np.array(data['pixels_per_degree'])
@@ -435,93 +454,7 @@ def preproc_data(data):
                                                 shape=[trial_data.shape[0],])
     
     return trial_data
-
-# def preproc_data(data):
-
-#     """
-#     Preprocess trial-by-trial attributes for a single subject at a time.
-#     Returns trial_data, [n_trials x n_attributes]
-#     """
     
-#     start_run_inds = np.where(~np.isnan(data['subject_id_rnd']))[0][0::2]
-#     stop_run_inds = np.where(~np.isnan(data['subject_id_rnd']))[0][1::2]
-#     finish_inds = stop_run_inds+1
-
-#     # get some basic stats here
-#     run_acc = np.array(data['total_acc'])[finish_inds]
-#     run_avg_rts = np.array(data['average_rt'])[finish_inds]
-#     print('run accuracies, avg RTs:')
-#     print(run_acc, run_avg_rts)
-    
-#     run_numbers = np.array(data['run_number'])[start_run_inds].astype(int)
-   
-#     # more info about what sequence this subject did
-#     which_cb = int(np.array(data['which_counterbal'])[start_run_inds[0]])
-#     random_order_number = int(np.array(data['random_order_number'])[start_run_inds[0]])
-  
-#     print('counterbalance cond: %d'%which_cb)
-#     print('random order number: %d'%random_order_number)
-#     # from disk, load the sequence for the trials that were shown to this participant.
-#     # this was pre-made before experiment was run.
-#     # can double check that everything saved from gorilla matches what was in here.
-#     expt_design_folder = os.path.join(project_root, 'expt_design', expt_name)
-#     info_filename = os.path.join(expt_design_folder, 'trial_info_counterbal%d_randorder%d.csv'%(which_cb, random_order_number))
-#     info = pd.read_csv(info_filename)
-
-#     n_trials = np.sum(data['is_stim'])
-#     assert(info.shape[0]==n_trials)
-
-#     # make the trial_data df, starting with what is in info, and adding specific 
-#     # data from this subject's performance.
-#     trial_data = info
-#     rts = np.array(data['Reaction Time'])
-#     stim_rts = rts[data['is_stim']==True]
-#     iti_rts = rts[data['is_iti']==True]
-
-#     trial_data['run_number'] = np.repeat(run_numbers, int(n_trials/len(run_numbers)))
-    
-#     rts = stim_rts
-#     # if they responded during ITI, we adjust their RT based on stimulus duration.
-#     rts[np.isnan(stim_rts)] = iti_rts[np.isnan(stim_rts)] + stimulus_dur_ms
-
-#     trial_data['rt'] = rts
-
-#     resp = np.array(proc_resp_strs(data['Response']))
-
-#     stim_resp = resp[data['is_stim']==True]
-#     iti_resp = resp[data['is_iti']==True]
-#     resp = stim_resp
-#     resp[np.isnan(stim_resp)] = iti_resp[np.isnan(stim_resp)]
-
-#     resp[np.isnan(resp)] = -1
-#     trial_data['resp'] = resp.astype(int)
-
-#     correct_resp = np.array(data['correct_response'])
-#     correct_resp = correct_resp[data['is_stim']==True].astype(int)
-
-#     # double check that trial sequence is correct between data and trial info csv
-#     correct_resp_check = 2-info['target_present'].astype(int)
-#     if not np.all(correct_resp_check==correct_resp):
-#         print(info_filename)
-#         print(correct_resp, correct_resp_check)
-
-#     assert(np.all(correct_resp_check==correct_resp))
-
-#     trial_data['correct_resp'] = correct_resp
-
-#     trial_data['correct'] = trial_data['correct_resp']==trial_data['resp']
-
-#     # add some more info for this subject, same values for all trials
-#     trial_data['which_cb'] = np.full(fill_value=which_cb, shape=[trial_data.shape[0],])
-#     trial_data['random_order_number'] = np.full(fill_value=random_order_number, \
-#                                                 shape=[trial_data.shape[0],])
-#     ppd = np.array(data['pixels_per_degree'])
-#     ppd = ppd[~np.isnan(ppd)][0]
-#     trial_data['pixels_per_degree'] = np.full(fill_value=ppd, \
-#                                                 shape=[trial_data.shape[0],])
-    
-#     return trial_data
-
 
 def proc_resp_strs(resp, poss_resp = ['1','2']):
 

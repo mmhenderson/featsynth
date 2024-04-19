@@ -53,7 +53,7 @@ def preproc_all():
 
     raw_data.set_index(np.arange(raw_data.shape[0]));
   
-    # define "good subjects" (those that finished whole experiment and got completion codes)
+    # define "complete subjects" (those that finished whole experiment)
     public_ids = np.array(raw_data['Participant Public ID'])
     public_ids = [p if isinstance(p,str) else '' for p in public_ids]
     public_ids = np.unique(public_ids)
@@ -67,7 +67,7 @@ def preproc_all():
         d = raw_data.iloc[inds]
         
         n_trials_done = np.array([np.sum((d['run_number']==rr) & (d['is_stim'])) \
-                              for rr in np.arange(1,11)])
+                              for rr in np.arange(1,n_runs_expected+1)])
         if np.all(n_trials_done>=n_trials_run_expected):
             done=True
         else:
@@ -87,7 +87,8 @@ def preproc_all():
     start_times = np.array(start_times)[subject_order]
 
     # get ids of all subjects that finished
-    good_ids = public_ids[np.array(is_good)]
+    complete_ids = public_ids[np.array(is_good)]
+    print(complete_ids)
     
     # cross-check this list of completed subjects against the csv file of participants from gorilla
     fn = os.path.join(data_folder, 'participants_all.csv')
@@ -95,30 +96,34 @@ def preproc_all():
     pubids_check = p['PublicID'][p['Status']=='Complete']
     pubids_check = np.sort(list(pubids_check))
 
-    # make sure all ids from 'participants_all.csv' are in the actual data
-    assert(np.all([p in good_ids for p in pubids_check]))
-    
-    # make .csv files listing the good subjects only (finished all trials)
-    good_df = make_subject_df(raw_data, good_ids)
-    fn2save = os.path.join(preproc_folder,'good_sub_list.csv')
-    print('saving to %s'%fn2save)
-    good_df.to_csv(fn2save)
-    good_prolific_ids = np.array(good_df['Worker ID Prolific'])
+    # make sure all complete ids from 'participants_all.csv' are in the actual data
+    # this is just sanity check that data is up-to-date
+    # but note that some good subject might not have the "complete" flag in .csv file
+    # if something weird happened on exit, etc
+    assert(np.all([p in complete_ids for p in pubids_check]))
     
     # make .csv for all subjects (including incomplete)
     all_df = make_subject_df(raw_data, public_ids)
     fn2save = os.path.join(preproc_folder,'all_sub_list.csv')
     print('saving to %s'%fn2save)
     all_df.to_csv(fn2save)
+
+    # make .csv files listing the complete subjects only (finished all trials)
+    complete_df = make_subject_df(raw_data, complete_ids)
+    fn2save = os.path.join(preproc_folder,'complete_subs_only.csv')
+    print('saving to %s'%fn2save)
+    complete_df.to_csv(fn2save)
+    
+    complete_prolific_ids = np.array(complete_df['Worker ID Prolific'])
     
     # now gathering the actual trial-by-trial info for each subject, 
     # which will be saved to disk for the good subjects.
     trial_data_all = pd.DataFrame()
     good_subject_count = 0 # keep track of how many have > threshold accuracy
+    good_prolific_ids = []
     
-    print(good_ids)
     
-    for si, ss in enumerate(good_ids):
+    for si, ss in enumerate(complete_ids):
         
         
         # get data for this participant
@@ -127,7 +132,7 @@ def preproc_all():
         
         pub_id = np.array(d['Participant Public ID'])[0]
         print('\nsubject %d, id: %s'%(si, pub_id))
-        date = np.array(good_df['Expt Start Time (PST)'])[good_df['Gorilla public ID']==ss]
+        date = np.array(complete_df['Expt Start Time (PST)'])[complete_df['Gorilla public ID']==ss]
         print('date = %s'%date)
         
         # check all runs are done
@@ -158,20 +163,27 @@ def preproc_all():
         intact_acc = np.mean(intact_data['resp']==intact_data['correct_resp'])
 
         print('intact acc: %.2f'%intact_acc)
+
+        if trial_data.shape[0] < (n_runs_expected * n_trials_run_expected):
+            # this subject is missing a run, need to skip it here
+            print('missing some data, skipping subject')
+            continue
+            
         if intact_acc<intact_acc_threshold:
 
             # don't save the low-performing subjects
-            print('skipping this subject')
+            print('intact accuracy too low, skipping subject')
             continue
+       
+        good_subject_count += 1
+        print('final number of this subject: %d'%good_subject_count)
+        trial_data['subject']=np.full(fill_value=good_subject_count, shape=[trial_data.shape[0],])
+        trial_data['gorilla_pub_id']=np.full(fill_value=ss, shape=[trial_data.shape[0],])
+        trial_data['worker_id']=np.full(fill_value=complete_prolific_ids[si], shape=[trial_data.shape[0],])
+        
+        trial_data_all = pd.concat([trial_data_all, trial_data])
 
-        else:
-
-            good_subject_count += 1
-            trial_data['subject']=np.full(fill_value=good_subject_count, shape=[trial_data.shape[0],])
-            trial_data['gorilla_pub_id']=np.full(fill_value=ss, shape=[trial_data.shape[0],])
-            trial_data['worker_id']=np.full(fill_value=good_prolific_ids[si], shape=[trial_data.shape[0],])
-            
-            trial_data_all = pd.concat([trial_data_all, trial_data])
+        good_prolific_ids += [complete_prolific_ids[si]]
 
     trial_data_all.set_index(np.arange(trial_data_all.shape[0]));
     
@@ -183,6 +195,15 @@ def preproc_all():
     u, counts = np.unique(cbinds, return_counts=True)
     print('\nnumber of good subjects (above acc %.2f): %d'%(intact_acc_threshold, len(subinds)))
     print('set 1, set 2: [%d, %d]'%(counts[0],counts[1]))
+
+    # make .csv files listing the good subjects only (passing all criteria)
+    # this is converting from prolific ids to gorilla ids (actually they are the same)
+    good_ids = [complete_ids[np.where(complete_prolific_ids==id)[0][0]] for id in good_prolific_ids]
+    good_df = make_subject_df(raw_data, good_ids)
+    fn2save = os.path.join(preproc_folder,'good_subs_only.csv')
+    print('saving to %s'%fn2save)
+    good_df.to_csv(fn2save)
+
     
     fn2save = os.path.join(preproc_folder, 'preproc_data_all.csv')
     print('saving to %s'%fn2save)
@@ -293,11 +314,7 @@ def preproc_data(data):
 
 
     # get some basic stats here
-    run_acc = np.array(data['total_acc'])[finish_inds]
-    run_avg_rts = np.array(data['average_rt'])[finish_inds]
-    print('run accuracies, avg RTs:')
-    print(run_acc, run_avg_rts)
-
+    
     run_numbers = np.array(data['run_number'])[start_run_inds].astype(int)
 
     # more info about what sequence this subject did
@@ -359,6 +376,58 @@ def preproc_data(data):
 
     trial_data['correct'] = trial_data['correct_resp']==trial_data['resp']
 
+    # computing acc and RT each run, for a quick summary 
+    r = np.array(trial_data['run_number'])
+    did_resp = np.array(trial_data['resp']>-1)
+    run_acc = np.array([np.mean(trial_data['correct'][(r==rr)]) \
+                              for rr in run_numbers])
+    run_acc = run_acc.round(3)*100
+
+    run_avg_rts = np.array([np.mean(trial_data['rt'][(r==rr) & did_resp]) \
+                         for rr in run_numbers])
+    run_avg_rts = run_avg_rts.round(1)
+
+    # check these against the values we computed during the actual task code
+    run_acc_check = np.array(data['total_acc'])[finish_inds]
+    run_avg_rts_check = np.array(data['average_rt'])[finish_inds]
+    # should be same. except the rounding for 0.50 gives different results sometimes
+    # NOTE occasionally there are nans in the values from task code
+    # where the values are not really nan. not sure what causes these, but as long
+    # as we use these real values computed above, they should be fine.
+    
+    # max they can be off by is rounding error
+    diffs = np.abs(run_acc-run_acc_check)
+    assert(not np.any(diffs>1))
+    diffs = np.abs(run_avg_rts-run_avg_rts_check)
+    assert(not np.any(diffs>1))
+    
+    print('run accuracies:')
+    print(run_acc)
+    print('run avg RTs:')
+    print(run_avg_rts)
+    
+    # how many no-response trials per run?
+    n_no_resp = np.array([np.sum(~did_resp[(r==rr)]) \
+                         for rr in run_numbers])
+    print('num missed responses:')
+    print(n_no_resp)
+    
+    # checking if there are any really bad runs here, which will be skipped.
+    # happens if too many responses are missing, or if accuracy is super low.
+    # this happens sometimes if they use wrong buttons or turn "num lock" off
+    is_bad = (np.array(run_acc)<0.10) | (n_no_resp > n_trials_run_expected/2)
+    bad_runs = np.where(is_bad)[0]+1
+    if len(bad_runs)>0:
+        print('not enough valid responses collected for runs:')
+        print(bad_runs)
+        print('acc for these runs:')
+        print([run_acc[rr-1] for rr in bad_runs])
+        
+        good_run_inds = ~np.isin(trial_data['run_number'], bad_runs)
+        trial_data = trial_data.iloc[good_run_inds]
+        trial_data.set_index(np.arange(trial_data.shape[0]))
+
+    
     # add some more info for this subject, same values for all trials
     trial_data['which_cb'] = np.full(fill_value=which_cb, shape=[trial_data.shape[0],])
     trial_data['random_order_number'] = np.full(fill_value=random_order_number, \
