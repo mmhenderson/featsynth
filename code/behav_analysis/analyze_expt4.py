@@ -32,7 +32,7 @@ def get_categ_info():
 
     super_names_long = np.repeat(super_names, n_basic_each_super)
     super_inds_long = np.repeat(np.arange(n_super), n_basic_each_super)
-    
+
     return super_names, super_cbinds, basic_names, basic_inds, \
         super_names_long, super_inds_long, n_basic, n_super, n_basic_each_super
 
@@ -134,8 +134,6 @@ def get_perf_by_supercateg():
 def get_perf_by_nat():
 
     # natural or artificial categories?
-    # ['insect', 'vegetable', 'fruit', 'dessert', 'tool',
-    #    'musical_instrument', 'furniture', 'vehicle']
     is_natural = np.array([1,1,1,1,0,0,0,0]).astype(bool)
     kind_names = ['Artificial','Natural']
     n_kinds = len(kind_names)
