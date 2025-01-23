@@ -1,21 +1,27 @@
 % OBJECT CATEGORY JUDGMENT TASK
- 
-try 
+% MMH 2024 - for use at CMU / UW in featsynth experiment
+
+% Timing: 284 seconds (4:44)
+% With TR = 1.0, this will require 284 TRs
+
+try  
     
     echo off  
     clear 
     close all  hidden
        
     % p is the structure that will hold everything we want to save
-    p.scanner_laptop = 0;
+    p.scanner_laptop = 1;
    
-
+    % skipping sync tests for debugging (set to 0 when running real)
+%     Screen('Preference', 'SkipSyncTests', 1);
+    Screen('Preference','SyncTestSettings' ,0.01); %maxStddev in sec
+    Screen('Preference', 'SkipSyncTests', 0);
+    
     expdir = pwd;
     filesepinds = find(expdir==filesep);
     root = expdir(1:filesepinds(end)-1);
-    
-    % set up paths for saving
-    datadir_local = fullfile(root, 'fmri_behav_data');
+   
     
     %% Collect information about the subject, the date, etc.
     
@@ -34,7 +40,7 @@ try
     p.run_num = str2double(answer{5});
   
     % check values of these entries
-    if ~ismember(p.session,1:2);  error('session must be 1,2,3');  end
+    if ~ismember(p.session,1:3);  error('session must be 1,2,3');  end
     if ~ismember(p.run_num, 1:16); error('run must be 1-16'); end
    
     rng('default')
@@ -43,11 +49,24 @@ try
      
     % where will i look for images? 
     if p.scanner_laptop
-        p.image_dir = ''; % todo: fix
+        p.image_dir = '/home/tarrlab/Documents/mmhender/featsynth/stimuli/images_comb64/';
     else
         p.image_dir = '/Users/margarethenderson/Dropbox/Apps/featsynth/images_comb64/';
     end
 
+    % set up paths for saving
+    datadir_local = fullfile(root, 'fmri_behav_data');
+    if p.debug
+        datadir_local = fullfile(root, 'fmri_behav_data', 'DEBUG');
+    end
+
+    % this call with "2" suppresses outputs to matlab.
+    % so it will keep any button presses from making random characters in 
+    % our code. otherwise we get lots of 1, t, space characters in code.
+    % later on we have to set this to "1" to make sure we start collecting
+    % keypresses in matlab again.
+    ListenChar(2)
+    
     %% initialize my data file
     % save a copy of the currently running script here (in text format) so
     % we can look at it later if issues arise
@@ -59,32 +78,32 @@ try
     end
    
     p.date_str = datestr(now,'yymmdd'); %Collect todays date (in p.)
-    p.time_str = datestr(now,'HHMM'); %Timestamp for saving out a uniquely named datafile (so you will never accidentally overwrite stuff)
+    p.time_str = datestr(now,'HHMMSS'); %Timestamp for saving out a uniquely named datafile (so you will never accidentally overwrite stuff)
          
     p.exp_name = 'maintask_fMRI_pilot1';
    
-    % this one file will hold all runs for this session/day
-    p.fnsave_local = fullfile(datadir_local, ...
-        ['S', p.sub_num_str, '_' p.exp_name '_' p.date_str '.mat']);
-   
-    if exist(p.fnsave_local,'file')
-        % load the existing file, will append to it
-        load(p.fnsave_local, 'dat_all');
-        % in this file is "dat_all", which lists info from prev runs
-        if p.run_num~=length(dat_all)+1
-             error('Check your run number, %d runs have been completed',length(dat_all));
-        end
-        for rr = 1:length(dat_all)
-            % checking some stuff about previous data
-            assert(dat_all(rr).p.session==p.session)
-        end
-    elseif p.run_num~=1            
-        error('No data exists yet for this subject, check your run number')
-    end
-    
-    p.rndseed = round(sum(100*clock));
-    rng(p.rndseed);
-    
+    % this file holds data for this individual run.
+    % i'm putting the date/time string in the filename, so we can't
+    % over-write it by accident here.
+    fn = sprintf('S%02d_%s_Sess%02d_Run%02d_%s_%s.mat', ...
+        p.sub_num, p.exp_name, p.session, p.run_num, p.date_str, p.time_str);
+    p.fnsave_local = fullfile(datadir_local, fn);
+% 
+%     if exist(p.fnsave_local,'file')
+%         % load the existing file, will append to it
+%         load(p.fnsave_local, 'dat_all');
+%         % in this file is "dat_all", which lists info from prev runs
+%         if p.run_num~=length(dat_all)+1
+%              error('Check your run number, %d runs have been completed',length(dat_all));
+%         end
+%         for rr = 1:length(dat_all)
+%             % checking some stuff about previous data
+%             assert(dat_all(rr).p.session==p.session)
+%         end
+%     elseif p.run_num~=1            
+%         error('No data exists yet for this subject, check your run number')
+%     end
+  
     if p.debug
         p.num_trials = 5;
     else   
@@ -103,6 +122,8 @@ try
     rnd_order_fn = fullfile(root, 'fmri_expt_code', 'random_orders.mat');
     load(rnd_order_fn);
     rand_order_num = rndorder(p.sub_num);
+    % this is one-indexed, because it comes from matlab code
+    p.random_order_number_matlab = rand_order_num;
 
     % index into runs for whole experiment
     p.run_num_overall = p.run_num + (p.session-1)*16;
@@ -137,7 +158,8 @@ try
     p.basic_names = cellfun(rep, p.basic_names, 'UniformOutput', false);
     
     p.random_order_number = ti(p.run_num_overall,1).random_order_number;
-
+    % this is zero-indexed, because it comes from python code
+    assert(p.random_order_number==(rand_order_num-1))
 
     %% set up my screen 
     
@@ -166,7 +188,7 @@ try
     [w, p.srect]=Screen('OpenWindow', s, p.back_color,[],[],[],multiSample);
     HideCursor;
     
-    disp(p.srect)
+%     disp(p.srect)
     % Enable alpha blending with proper blend-function. We need it
     % for drawing of smoothed points:
     Screen('BlendFunction', w, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -181,9 +203,11 @@ try
     if p.scanner_laptop
         % TODO: fix for scanner laptop
         p.refresh_rate = 60;
-        % TODO: get these measurements for screen at bridge center
-        p.vdist_cm = 47;
-        p.screen_height_cm = 16;
+        % Added MMH 2024:
+        % these measures are from JP, for BOLDscreen at UW Prisma
+        p.vdist_cm = 120; % in cm
+        p.screen_height_cm = 39.29;
+        
     else
         % macbook pro for testing
         p.refresh_rate = 60;
@@ -198,7 +222,7 @@ try
     if abs(p.fps-p.refresh_rate)>5
         Screen('CloseAll');
         disp('CHANGE YOUR REFRESH RATE')
-        ListenChar(0);
+        ListenChar(1);
         %clear all;
         return;
     end
@@ -212,27 +236,34 @@ try
     p.center_pix = [(p.srect(3) - p.srect(1))/2, (p.srect(4) - p.srect(2))/2];
     
     % set some general stim params
-    p.fix_size_deg = .5;
-    p.fix_color = [0.8,0.8,0.8]*255;
-    p.stim_height_deg = 12 ;   
+    p.fix_size_outer_deg = 0.25; % total radius
+    p.fix_size_inner_deg = 0.20;
+    p.fix_color_outer = [0.2,0.2,0.2]*255;
+    p.fix_color_inner = [0.8,0.8,0.8]*255;
+    p.stim_height_deg = 10;
     p.text_color = p.white;
-    p.instr_text_height_deg = 1.2;
-    p.miniblock_text_height_deg = 2.0; 
+    p.instr_text_height_deg = 1.0;
+    p.miniblock_text_height_deg = 1.5; 
 
     % this is where the text cues on each trial appear
-    p.cue_text_width_deg = 5.0;
-    p.cue_text_height_deg = 4.0  ; 
-    p.cue_text_x_offset_deg = 3.0;
+    p.cue_text_width_deg = 3.0;
+    p.cue_text_height_deg = 2.5; 
+    p.cue_text_x_offset_deg = 1.5;
     p.cue_text_y_offset_deg = 0;
 
+    % approx size of text (this will be used to set font size)
+    p.text_height_deg = 0.4;
     
     % convert from degrees to pixel units
     % this automatically makes a bunch of new p. variables
     p = deg2pix(p);  
-    p.fix_size_pix = ceil(p.fix_size_pix);
+    p.fix_size_inner_pix = ceil(p.fix_size_inner_pix);
+    p.fix_size_outer_pix = ceil(p.fix_size_outer_pix);
 
+    p.text_height_pix = round(p.text_height_pix);
     %% Load the images 
       
+    disp('loading images')
     for ii=1:p.num_trials
         
         imfn = fullfile(p.image_dir, ti(p.run_num_overall, ii).image_name);
@@ -248,6 +279,7 @@ try
 
     end
 
+    disp('done loading images')
     % set up a frame to plot the image in
     p.stim_width_pix = p.stim_height_pix*size(im,2)/size(im,1);
     p.frame_pos=[p.center_pix(1)-p.stim_width_pix/2,...
@@ -257,7 +289,7 @@ try
 
     % making rectangles to plot my cue text in, left and right of fix
     center_l = [p.center_pix(1) - p.cue_text_x_offset_pix, ...
-                p.center_pix(2) - p.cue_text_y_offset_pix];
+                 p.center_pix(2) - p.cue_text_y_offset_pix];
     center_r = [p.center_pix(1) + p.cue_text_x_offset_pix, ...
                 p.center_pix(2) - p.cue_text_y_offset_pix];
 
@@ -276,8 +308,11 @@ try
 
     %use number pad - change this for scanner 
     if p.scanner_laptop
-        % TODO: figure out what the keys will be at bridge center
-        p.keys=[KbName('b'),KbName('y')];
+        % Modified for PYKA in "HID_NAR_BYGRT" mode at UW CHN Prisma (JPyles)
+        p.keys = [KbName('y'),KbName('g')]; % 1 = left/up, 2 = right/down
+    
+%         % TODO: figure out what the keys will be at bridge center
+%         p.keys=[KbName('b'),KbName('y')];
     else
         p.keys=[KbName('u'),KbName('i')];
     end
@@ -312,43 +347,59 @@ try
     %% timing information
     
     p.stim_time_sec= 0.500;      
-    p.delay_time_sec = 1.5;
-    p.cue_time_sec = 2.0;
+%     p.delay_time_sec = 1.5;
+    p.delay_time_sec = 2.0;
+    p.cue_time_sec = 1.5;
 
     p.miniblock_instr_sec = 2.5;
     p.miniblock_delay_sec = 1.0;
     
-    if p.scanner_laptop
+    if ~p.debug
         % actual timing for scanner expt - long delay at start,
         % longer/jittered ITIs. 
-        p.start_fix_sec = 13;
-        p.end_fix_sec = 8;
+        p.start_fix_sec = 8;
+        p.end_fix_sec = 2;
         p.iti_range_sec = [1, 5];
     else
         % for testing - whole thing can be shorter.
         p.start_fix_sec = 1;
-        p.end_fix_sec = 0;
-        p.iti_range_sec = [2, 2];
+        p.end_fix_sec = 1;
+        p.iti_range_sec = [1.5, 2];
     end 
     
-    % uniformly distributed random itis
-    itis = linspace(p.iti_range_sec(1),p.iti_range_sec(2),p.num_trials);
+    % log distributed random ITIs:
+    itis = my_logspace(p.iti_range_sec(1),p.iti_range_sec(2),10.01,p.num_trials);
+%     % uniformly distributed random itis
+%     itis = linspace(p.iti_range_sec(1),p.iti_range_sec(2),p.num_trials);
     p.iti_sec = itis(randperm(length(itis)))';
-   
+    p.iti_total = sum(itis);
+%     disp(p.iti_total)
     
     %% START EXPERIMENT
     % Draw an instruction screen, wait for space press
     FlushEvents('keyDown');
     Screen(w,'TextFont','Arial');
-    Screen(w,'TextSize', 22);
+    Screen(w,'TextSize', p.text_height_pix);
  
     % draw the first instructions screen
     instr_text = 'Prepare for task.';
     DrawFormattedText(w, instr_text, 'center', ...
         p.center_pix(2)-p.instr_text_height_pix, p.text_color);
 
+%     tp = p.text_height_pix;
+% 
+%     rect = [p.center_pix(1)-p.cue_text_width_pix/2,...
+%         p.center_pix(2)-p.instr_text_height_pix-tp,...
+%         p.center_pix(1)+p.cue_text_width_pix/2,...
+%         p.center_pix(2)-p.instr_text_height_pix];
+%     
+%     Screen('FrameRect', w, p.white, rect)
+% %     Screen('FrameRect ', w, p.white, p.text_rect_r)
+
     
-    Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+%     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+    Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+    Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
     Screen('DrawingFinished', w);
     Screen('Flip', w);               
 
@@ -377,9 +428,10 @@ try
     %% Fixation period before starting the stimuli 
     FlushEvents('keyDown');
     Screen('Flip', w);
-    ListenChar(2)
     
-    Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+    %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+    Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+    Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
     Screen('DrawingFinished', w);
     Screen('Flip', w);
 
@@ -419,7 +471,9 @@ try
                 p.center_pix(2)-p.miniblock_text_height_pix, p.text_color);
         
             
-            Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+            %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+            Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+            Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
             Screen('DrawingFinished', w);
             Screen('Flip', w);               
 
@@ -441,8 +495,10 @@ try
             time_from_start = time_from_start + p.miniblock_instr_sec;
 
             %% Pause before showing first stimulus in the mini-block
-            
-            Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+
+            %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+            Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+            Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
             Screen('DrawingFinished', w);
             Screen('Flip', w);               
 
@@ -468,7 +524,9 @@ try
         %% Show target image   
         
         Screen('DrawTexture', w, allims(tt).imtext,[],p.frame_pos);
-        Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+        Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
         Screen('DrawingFinished', w);
         [~, onset] = Screen('Flip', w); 
         p.stim_flips(tt,1) = onset; % onset of image
@@ -493,7 +551,9 @@ try
         
         %% Delay period (fix only)
 
-        Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+        Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
         Screen('DrawingFinished', w);
         [~, onset] = Screen('Flip', w); 
         p.stim_flips(tt,2) = onset; % offset of image
@@ -537,7 +597,7 @@ try
         if length(name)>1
             right_text = sprintf('(2)\n%s\n%s', name{1}, name{2});
         else
-            right_text = sprintf('(2 )\n%s', name{1});
+            right_text = sprintf('(2)\n%s', name{1});
         end
         DrawFormattedText(w, right_text, ...
             'center', ...
@@ -550,7 +610,9 @@ try
 %         Screen('FrameRect ', w, p.white, p.text_rect_r)
     
      
-        Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+        Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
         Screen('DrawingFinished', w);
         [~, onset] = Screen('Flip', w); 
         p.stim_flips(tt,3) = onset; % onset of cues
@@ -594,7 +656,9 @@ try
         %% ITI starts now
         % just blank screen, but keep checking responses
 
-        Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+        Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+        Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
         Screen('DrawingFinished', w);                     
         [~, onset] = Screen('Flip', w); 
         p.stim_flips(tt,4) = onset; % offset of cues
@@ -650,7 +714,9 @@ try
     p.accuracy = acc;
     
     % final fixation:
-    Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+    %     Screen('DrawDots', w, [0,0], p.fix_size_pix, p.fix_color, p.center_pix, 0); 
+    Screen('DrawDots', w, [0,0], p.fix_size_outer_pix, p.fix_color_outer, p.center_pix, 1); 
+    Screen('DrawDots', w, [0,0], p.fix_size_inner_pix, p.fix_color_inner, p.center_pix, 1); 
     Screen('DrawingFinished', w);
     Screen('Flip', w);
 
@@ -681,7 +747,24 @@ try
     p.total_exp_time = (p.end_exp_time-p.start_exp_time); 
     p.total_exp_time_mins = p.total_exp_time/60; 
 
-    %% get accuracy
+    %----------------------------------------------------------------------
+    %SAVE OUT THE DATA-----------------------------------------------------
+    %----------------------------------------------------------------------
+
+%     if p.run_num>1
+%         % if this is not the first run, then we want to make sure the 
+%         % dat_all list from previous runs is loaded here
+%        load(p.fnsave_local, 'dat_all');
+%     end
+% 
+%     % This is where we are appending the existing run into our dat_all list
+%     % If this is run 1, then we're creating dat_all from scratch here.
+%     dat_all(p.run_num).p = p;
+%     
+    % save the file to disk here
+    save(p.fnsave_local,'p');
+
+    %% show performance on screen
     
     % print some feedback to command window
     fprintf('\nCompleted block %d!\n', p.run_num);
@@ -699,22 +782,7 @@ try
     Screen('DrawingFinished', w);
     Screen('Flip', w);
          
-    %----------------------------------------------------------------------
-    %SAVE OUT THE DATA-----------------------------------------------------
-    %----------------------------------------------------------------------
-
-    if p.run_num>1
-        % if this is not the first run, then we want to make sure the 
-        % dat_all list from previous runs is loaded here
-       load(p.fnsave_local, 'dat_all');
-    end
-
-    % This is where we are appending the existing run into our dat_all list
-    % If this is run 1, then we're creating dat_all from scratch here.
-    dat_all(p.run_num).p = p;
     
-    % save the file to disk here
-    save(p.fnsave_local,'dat_all');
     
     resp_in_set=0; 
     % wait for a space bar press or escape to exit
